@@ -19,6 +19,10 @@
             min-height: 100vh;
             overflow: hidden;
             padding: 1rem;
+            /* Prevent text selection on mobile */
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
         canvas {
             background-color: #4a6741; /* Color del pasto */
@@ -28,6 +32,7 @@
             image-rendering: -moz-crisp-edges;
             image-rendering: crisp-edges;
             max-width: 100%;
+            cursor: pointer;
         }
         #game-container {
             position: relative;
@@ -87,6 +92,7 @@
             text-align: center;
             font-size: 1.2rem;
             z-index: 5;
+            pointer-events: none; /* Make it so clicks go through to the canvas */
         }
         #restart-button {
             font-family: 'Press Start 2P', cursive;
@@ -113,8 +119,7 @@
     <div id="game-container">
         <canvas id="gameCanvas" width="640" height="480"></canvas>
         <div id="start-message">
-            <p>Usa las flechas ARRIBA y ABAJO para moverte.</p>
-            <p>¡Presiona cualquier tecla para empezar!</p>
+            <!-- This will be populated by JS -->
         </div>
         <div id="end-screen" class="hidden">
             <div class="flag-arg">
@@ -137,6 +142,9 @@
         let gameOver = false;
         let finalStretchActive = false;
         
+        // --- Detección de Dispositivo ---
+        const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
         // --- Configuración del Juego ---
         const trackWidth = 280;
         const finishLineY = 80; // Posición fija de la linea de meta en el tramo final
@@ -177,14 +185,35 @@
 
         // --- Controles ---
         const keys = { ArrowUp: false, ArrowDown: false };
-
-        window.addEventListener('keydown', (e) => {
-            if (!gameStarted && !gameOver) initGame();
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
-        });
-        window.addEventListener('keyup', (e) => {
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
-        });
+        
+        // Mensaje de inicio dinámico
+        if (isMobile) {
+            startMessage.innerHTML = `<p>Mantén presionada la pantalla para acelerar.</p><p>¡Toca para empezar!</p>`;
+        } else {
+            startMessage.innerHTML = `<p>Usa las flechas ARRIBA y ABAJO para moverte.</p><p>¡Presiona cualquier tecla para empezar!</p>`;
+        }
+        
+        // Asignación de listeners según el dispositivo
+        if (isMobile) {
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (!gameStarted && !gameOver) initGame();
+                keys.ArrowUp = true;
+            });
+            canvas.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                keys.ArrowUp = false;
+            });
+        } else {
+            window.addEventListener('keydown', (e) => {
+                if (!gameStarted && !gameOver) initGame();
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+            });
+        }
+        
         restartButton.addEventListener('click', restartGame);
 
         // --- Sonido ---
@@ -347,9 +376,11 @@
 
         // --- Bucle Principal ---
         function update() {
+            // La lógica de aceleración es la misma, solo cambia cómo se activa `keys.ArrowUp`
             if (keys.ArrowUp) player.speed += player.acceleration;
-            else if (keys.ArrowDown) player.speed -= player.braking;
+            else if (!isMobile && keys.ArrowDown) player.speed -= player.braking;
             else player.speed -= player.friction;
+            
             player.speed = Math.max(0, Math.min(player.maxSpeed, player.speed));
 
             let aiCurrentSpeed = aiCar.speed;
