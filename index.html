@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Go Quick 16-Bit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            padding: 1rem;
+        }
+        canvas {
+            background-color: #4a6741; /* Color del pasto */
+            border: 8px solid #333;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            max-width: 100%;
+        }
+        #game-container {
+            position: relative;
+            width: 640px;
+            max-width: 100%;
+        }
+        #end-screen {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 10;
+        }
+        .flag-arg {
+            width: 80%;
+            height: 60%;
+            background: linear-gradient(#75aadb 33.3%, white 33.3%, white 66.6%, #75aadb 66.6%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border: 4px solid white;
+        }
+        .sun {
+            width: 50px;
+            height: 50px;
+            background-color: #f6b40e;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #end-text {
+            color: #1a1a1a;
+            font-size: 2rem;
+            text-shadow: 2px 2px 0 #fff, -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff;
+            margin-top: 1rem;
+        }
+         #start-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            background-color: rgba(0,0,0,0.7);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 1.2rem;
+            z-index: 5;
+        }
+        #restart-button {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #38a169;
+            color: white;
+            border: 4px solid white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 1.5rem;
+            padding: 0.75rem 1.5rem;
+            font-size: 1.25rem;
+        }
+        #restart-button:hover {
+            background-color: #2f855a;
+        }
+        .hidden {
+            display:none !important;
+        }
+
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    <h1 class="text-4xl mb-4">F1 Race 16-Bit</h1>
+    <div id="game-container">
+        <canvas id="gameCanvas" width="640" height="480"></canvas>
+        <div id="start-message">
+            <p>Usa las flechas ARRIBA y ABAJO para moverte.</p>
+            <p>¡Presiona cualquier tecla para empezar!</p>
+        </div>
+        <div id="end-screen" class="hidden">
+            <div class="flag-arg">
+                 <div class="sun">☀️</div>
+                 <h2 id="end-text">¡Vamos Nene!</h2>
+            </div>
+            <button id="restart-button">Reiniciar</button>
+        </div>
+    </div>
+    <p class="mt-4 text-sm">Controla el auto #43 (derecha) y desobedece la órden para ganar.</p>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startMessage = document.getElementById('start-message');
+        const endScreen = document.getElementById('end-screen');
+        const restartButton = document.getElementById('restart-button');
+
+        let gameStarted = false;
+        let gameOver = false;
+        let finalStretchActive = false;
+        
+        // --- Configuración del Juego ---
+        const trackWidth = 280;
+        const finishLineY = 80; // Posición fija de la linea de meta en el tramo final
+        const raceDistance = 3750; // Carrera recortada al 50%
+        let distanceScrolled = 0;
+        let totalVisualScroll = 0;
+
+        const INITIAL_PLAYER_Y = canvas.height - 100;
+        const INITIAL_AI_CAR_Y = canvas.height - 180; // El auto IA empieza más adelantado
+
+        // --- Jugador (Auto #43) ---
+        const player = {
+            x: canvas.width / 2 + trackWidth / 4,
+            y: INITIAL_PLAYER_Y,
+            width: 40,
+            height: 70,
+            speed: 0,
+            maxSpeed: 16,
+            acceleration: 0.25,
+            braking: 0.4,
+            friction: 0.08,
+            colorBody: '#FF69B4', // Rosa para la línea central
+            colorChassis: '#000000', // Negro para los lados
+            colorWing: '#FFD700' // Amarillo
+        };
+
+        // --- Auto IA (Auto #10) ---
+        const aiCar = {
+            x: canvas.width / 2 - trackWidth / 4,
+            y: INITIAL_AI_CAR_Y,
+            width: 40,
+            height: 70,
+            speed: 12.5, // Velocidad base del auto IA
+            colorBody: '#FF69B4', // Rosa para la línea central
+            colorChassis: '#000000', // Negro para los lados
+            colorWing: '#FFD700' // Amarillo
+        };
+
+        // --- Controles ---
+        const keys = { ArrowUp: false, ArrowDown: false };
+
+        window.addEventListener('keydown', (e) => {
+            if (!gameStarted && !gameOver) initGame();
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+        });
+        restartButton.addEventListener('click', restartGame);
+
+        // --- Sonido ---
+        let acceleratorSynth;
+        let soundTriggerCounter = 0;
+        let victorySynth, victoryPart;
+
+        function setupSounds() {
+            if (!acceleratorSynth || acceleratorSynth.disposed) {
+                acceleratorSynth = new Tone.Synth({
+                    oscillator: { type: 'triangle' },
+                    envelope: { attack: 0.005, decay: 0.1, sustain: 0.1, release: 0.1 },
+                    volume: -22
+                }).toDestination();
+            }
+        }
+
+        function updateAccelerationSound() {
+            if (!acceleratorSynth || acceleratorSynth.disposed || Tone.context.state !== 'running') return;
+
+            const speedRatio = player.speed / player.maxSpeed;
+
+            if (speedRatio > 0.05) {
+                const intervalInFrames = Math.max(3, 25 - Math.floor(speedRatio * 22));
+                
+                soundTriggerCounter++;
+
+                if (soundTriggerCounter >= intervalInFrames) {
+                    soundTriggerCounter = 0;
+                    const noteFrequency = 150 + (speedRatio * 600);
+                    acceleratorSynth.triggerAttackRelease(noteFrequency, '64n');
+                }
+            } else {
+                soundTriggerCounter = 0;
+            }
+        }
+        
+        // --- Elementos del escenario ---
+        let scenery = [];
+        function createScenery() {
+            scenery = [];
+            for (let i = 0; i < 15; i++) scenery.push({ type: 'curb', x: (canvas.width - trackWidth) / 2 - 20, y: i * 100 - canvas.height, side: 'left'});
+            for (let i = 0; i < 15; i++) scenery.push({ type: 'curb', x: (canvas.width + trackWidth) / 2, y: i * 150 - canvas.height, side: 'right'});
+            for (let i = 0; i < 5; i++) scenery.push({ type: 'stand', y: i * 400 + 200 - canvas.height, side: Math.random() < 0.5 ? 'left' : 'right'});
+            for (let i = 0; i < 8; i++) scenery.push({ type: 'sign', y: i * 250 + 100 - canvas.height, side: Math.random() < 0.5 ? 'left' : 'right'});
+        }
+
+        // --- Dibujo ---
+        function drawPixelText(text, x, y, color = 'white', size = 16) {
+            ctx.font = `${size}px 'Press Start 2P'`;
+            ctx.fillStyle = color;
+            ctx.fillText(text, x, y);
+        }
+
+        function drawCar(car, number) {
+            const x = car.x - car.width / 2;
+            const y = car.y - car.height / 2;
+
+            ctx.fillStyle = car.colorChassis;
+            ctx.fillRect(x + 1, y, car.width - 2, car.height);
+            ctx.fillStyle = car.colorBody;
+            ctx.fillRect(x + car.width / 2 - 5, y, 10, car.height);
+            ctx.fillStyle = '#222';
+            ctx.fillRect(x - 15, y + 10, 16, car.height - 20);
+            ctx.fillRect(x + car.width - 1, y + 10, 16, car.height - 20);
+            ctx.fillStyle = car.colorWing;
+            ctx.fillRect(x - 20, y + car.height - 15, car.width + 40, 10);
+            drawPixelText(number, x + car.width/2 - (number.length * 8), y + 25, 'white', 14);
+        }
+
+        function drawSpeechBubble(car, textLine1, textLine2) {
+            const bubbleWidth = 140;
+            const bubbleHeight = 45;
+            const bubbleX = car.x + car.width / 2 - 15;
+            const bubbleY = car.y - car.height / 2 - bubbleHeight - 15;
+
+            ctx.fillStyle = 'white';
+            ctx.fillRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+
+            ctx.beginPath();
+            ctx.moveTo(bubbleX + 20, bubbleY + bubbleHeight);
+            ctx.lineTo(bubbleX + 40, bubbleY + bubbleHeight);
+            ctx.lineTo(car.x, car.y - car.height / 2);
+            ctx.closePath();
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            ctx.stroke();
+
+            drawPixelText(textLine1, bubbleX + 8, bubbleY + 20, 'black', 10);
+            drawPixelText(textLine2, bubbleX + 8, bubbleY + 38, 'black', 10);
+        }
+
+
+        function drawScenery(scroll) {
+             scenery.forEach(item => {
+                item.y += scroll;
+                if(item.y > canvas.height + 50) item.y = -canvas.height - Math.random() * 200;
+                ctx.save();
+                ctx.translate(0, item.y);
+                switch(item.type) {
+                    case 'curb':
+                        for(let i = 0; i < 5; i++){
+                            ctx.fillStyle = (i % 2 === 0) ? 'red' : 'white';
+                            ctx.fillRect(item.x, i * 15, 20, 15);
+                        }
+                        break;
+                    case 'stand':
+                        const standX = item.side === 'left' ? 20 : canvas.width - 100;
+                        ctx.fillStyle = '#b0b0b0';
+                        ctx.fillRect(standX, 0, 80, 150);
+                         for(let i=0; i < 5; i++) {
+                            for(let j=0; j < 15; j++) {
+                                ctx.fillStyle = `hsl(${Math.random() * 360}, 70%, 50%)`;
+                                ctx.fillRect(standX + 5 + j*4.5, 10 + i * 25, 4, 4);
+                            }
+                        }
+                        break;
+                    case 'sign':
+                        const signX = item.side === 'left' ? 80 : canvas.width - 120;
+                        ctx.fillStyle = '#4a2a0a';
+                        ctx.fillRect(signX + 18, 0, 4, 50);
+                        ctx.fillStyle = '#00aaff';
+                        ctx.fillRect(signX, -30, 40, 30);
+                        drawPixelText("GO!", signX + 4, -10, 'white', 12);
+                        break;
+                }
+                ctx.restore();
+            });
+        }
+        
+        function drawFinishLine() {
+            let lineY;
+            if (finalStretchActive) {
+                lineY = finishLineY;
+            } else {
+                if (distanceScrolled <= raceDistance - canvas.height * 1.5) return;
+                lineY = finishLineY + (raceDistance - distanceScrolled);
+            }
+            for (let i = 0; i < 10; i++) {
+                for (let j = 0; j < 2; j++) {
+                    ctx.fillStyle = (i + j) % 2 === 0 ? 'white' : 'black';
+                    ctx.fillRect((canvas.width - trackWidth)/2 + i * (trackWidth/10), lineY, trackWidth/10, 10);
+                }
+            }
+            const manX = (canvas.width + trackWidth) / 2 + 30;
+            const manY = lineY - 30;
+            ctx.fillStyle = 'white';
+            ctx.fillRect(manX, manY, 20, 35);
+            ctx.fillStyle = '#f0d0b0';
+            ctx.fillRect(manX + 5, manY - 10, 10, 10);
+            const flagWave = Math.sin(Date.now() / 150) * 5;
+            ctx.fillStyle = '#333';
+            ctx.fillRect(manX - 20, manY + 10, 20, 5);
+            ctx.fillStyle = 'white';
+            ctx.fillRect(manX - 45 + flagWave, manY, 25, 15);
+        }
+
+        // --- Bucle Principal ---
+        function update() {
+            if (keys.ArrowUp) player.speed += player.acceleration;
+            else if (keys.ArrowDown) player.speed -= player.braking;
+            else player.speed -= player.friction;
+            player.speed = Math.max(0, Math.min(player.maxSpeed, player.speed));
+
+            let aiCurrentSpeed = aiCar.speed;
+            const proximityToFinish = distanceScrolled / raceDistance;
+            if (proximityToFinish > 0.9) {
+                const reductionFactor = 1 - Math.pow((proximityToFinish - 0.9) / 0.1, 2);
+                aiCurrentSpeed *= Math.max(0.1, reductionFactor);
+            }
+
+            if (!finalStretchActive && distanceScrolled > raceDistance - (canvas.height - finishLineY)) {
+                finalStretchActive = true;
+            }
+
+            if (finalStretchActive) {
+                player.y -= player.speed;
+                aiCar.y -= aiCurrentSpeed;
+                if (player.y <= finishLineY && !gameOver) winGame();
+            } else {
+                distanceScrolled += player.speed;
+                totalVisualScroll += player.speed;
+                aiCar.y += (player.speed - aiCurrentSpeed);
+                aiCar.y = Math.max(20, Math.min(canvas.height - 20, aiCar.y));
+            }
+            updateAccelerationSound();
+        }
+
+        function draw() {
+            ctx.fillStyle = '#4a6741';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            const trackX = (canvas.width - trackWidth) / 2;
+            ctx.fillStyle = '#333333';
+            ctx.fillRect(trackX, 0, trackWidth, canvas.height);
+            
+            const scrollSpeed = finalStretchActive ? 0 : player.speed;
+            drawScenery(scrollSpeed);
+            
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 5;
+            ctx.setLineDash([20, 30]);
+            const lineOffset = -(totalVisualScroll % 50);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, lineOffset);
+            ctx.lineTo(canvas.width / 2, canvas.height + lineOffset);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            drawFinishLine();
+            drawCar(player, '43');
+            drawCar(aiCar, '10');
+            drawSpeechBubble(aiCar, "Mantengamos", "la posición!!");
+            
+            let currentProgressDistance = distanceScrolled;
+            if (finalStretchActive) {
+                 const finalStretchTotalDist = INITIAL_PLAYER_Y - finishLineY;
+                 const traveledInStretch = INITIAL_PLAYER_Y - player.y;
+                 currentProgressDistance = (raceDistance - finalStretchTotalDist) + traveledInStretch;
+            }
+            const progress = Math.min(100, (currentProgressDistance / raceDistance) * 100);
+            drawPixelText(`Progreso: ${progress.toFixed(0)}%`, 10, 30, 'white', 14);
+
+            // Firma añadida
+            drawPixelText("by alex", canvas.width - 120, canvas.height - 15, 'rgba(255,255,255,0.7)', 12);
+        }
+
+        function gameLoop() {
+            if (gameOver) return;
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function playVictoryAnthem() {
+            victorySynth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "square" },
+                envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 },
+                volume: -18
+            }).toDestination();
+
+            const melody = [
+                { time: '0:0', note: 'C5', duration: '4n' }, { time: '0:1', note: 'C5', duration: '4n' },
+                { time: '0:2', note: 'C5', duration: '2n' }, { time: '1:0', note: 'D5', duration: '4n' },
+                { time: '1:1', note: 'D5', duration: '4n' }, { time: '1:2', note: 'D5', duration: '2n' },
+                { time: '2:0', note: 'E5', duration: '4n' }, { time: '2:1', note: 'E5', duration: '4n' },
+                { time: '2:2', note: 'E5', duration: '2n' }, { time: '3:0', note: 'F5', duration: '2n' },
+                { time: '3:2', note: 'E5', duration: '2n' },
+            ];
+            
+            victoryPart = new Tone.Part((time, value) => {
+                if (victorySynth && !victorySynth.disposed) {
+                    victorySynth.triggerAttackRelease(value.note, value.duration, time);
+                }
+            }, melody).start(0);
+
+            Tone.Transport.start();
+            
+            Tone.Transport.scheduleOnce(() => {
+                if (Tone.Transport.state === 'started') {
+                    Tone.Transport.stop();
+                    Tone.Transport.cancel(0);
+                    if (victoryPart) {
+                        victoryPart.dispose();
+                        victoryPart = null;
+                    }
+                    if (victorySynth && !victorySynth.disposed) {
+                        victorySynth.dispose();
+                        victorySynth = null;
+                    }
+                }
+            }, 6);
+        }
+
+        function winGame() {
+            gameOver = true;
+            playVictoryAnthem();
+            endScreen.classList.remove('hidden');
+        }
+
+        function restartGame() {
+            gameOver = false;
+            gameStarted = false;
+            finalStretchActive = false;
+            distanceScrolled = 0;
+            totalVisualScroll = 0;
+            player.speed = 0;
+            player.y = INITIAL_PLAYER_Y;
+            aiCar.y = INITIAL_AI_CAR_Y;
+            keys.ArrowUp = false;
+            keys.ArrowDown = false;
+            endScreen.classList.add('hidden');
+            startMessage.classList.remove('hidden');
+            createScenery();
+            
+            // Detener y limpiar el transporte de audio para evitar errores.
+            if (Tone.Transport.state === 'started') {
+                Tone.Transport.stop();
+                Tone.Transport.cancel(0);
+            }
+            
+            // Desechar todos los componentes de sonido.
+            if (victoryPart) {
+                victoryPart.dispose();
+                victoryPart = null;
+            }
+            if (victorySynth && !victorySynth.disposed) {
+                victorySynth.dispose();
+                victorySynth = null;
+            }
+            if (acceleratorSynth && !acceleratorSynth.disposed) {
+                acceleratorSynth.dispose();
+                acceleratorSynth = null;
+            }
+
+            draw();
+        }
+
+        function initGame() {
+            if (gameStarted) return;
+            gameStarted = true;
+            startMessage.classList.add('hidden');
+            Tone.start().then(() => {
+                setupSounds();
+                gameLoop();
+            }).catch(() => gameLoop());
+        }
+
+        // Dibuja el estado inicial
+        createScenery();
+        draw();
+    </script>
+</body>
+</html>
+
