@@ -108,6 +108,11 @@
         #restart-button:hover {
             background-color: #2f855a;
         }
+        #accelerate-button {
+            font-family: 'Press Start 2P', cursive;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
         .hidden {
             display:none !important;
         }
@@ -131,12 +136,18 @@
     </div>
     <p class="mt-4 text-sm">Controla el auto #43 (derecha) y desobedece la órden para ganar.</p>
 
+    <button id="accelerate-button" class="hidden fixed bottom-5 right-5 bg-green-600 text-white p-6 rounded-full text-2xl shadow-lg active:bg-green-800">
+        GO!
+    </button>
+
+
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const startMessage = document.getElementById('start-message');
         const endScreen = document.getElementById('end-screen');
         const restartButton = document.getElementById('restart-button');
+        const accelerateButton = document.getElementById('accelerate-button');
 
         let gameStarted = false;
         let gameOver = false;
@@ -188,7 +199,8 @@
         
         // Mensaje de inicio dinámico
         if (isMobile) {
-            startMessage.innerHTML = `<p>Mantén presionada la pantalla para acelerar.</p><p>¡Toca para empezar!</p>`;
+            startMessage.innerHTML = `<p>Usa el botón GO! para acelerar.</p><p>¡Toca la pista para empezar!</p>`;
+            accelerateButton.classList.remove('hidden');
         } else {
             startMessage.innerHTML = `<p>Usa las flechas ARRIBA y ABAJO para moverte.</p><p>¡Presiona cualquier tecla para empezar!</p>`;
         }
@@ -198,9 +210,12 @@
             canvas.addEventListener('touchstart', (e) => {
                 e.preventDefault();
                 if (!gameStarted && !gameOver) initGame();
+            });
+            accelerateButton.addEventListener('touchstart', (e) => {
+                e.preventDefault();
                 keys.ArrowUp = true;
             });
-            canvas.addEventListener('touchend', (e) => {
+            accelerateButton.addEventListener('touchend', (e) => {
                 e.preventDefault();
                 keys.ArrowUp = false;
             });
